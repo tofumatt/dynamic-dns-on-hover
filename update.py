@@ -1,24 +1,41 @@
 #!/usr/bin/env python
 """
-Dynamic DNS on Hover
+Dynamic DNS for Hover
 
 Most code from https://gist.github.com/dankrause/5585907
+
+usage:
+    update.py --username=USERNAME --password=PASSWORD <domain> [--ip=IP] [--debug]
+    update.py --config=CONFIG <domain> [--ip=IP] [--debug]
+
+options:
+
+    --username=USERNAME  Your username on hover.com
+    --password=PASSWORD  Your password on hover.com
+    <domain>             Domain to update
+    --ip=IP              IP to set, if empty get external IP from ifconfig.me
+
+    --config=CONFIG      Read usernameand password from a INI like file
+
+    --debug
 """
 
 import ConfigParser
 import docopt
 import requests
 import sys
+import logging
 
+VERSION = 0.1
 
 class HoverException(Exception):
     pass
-
 
 class HoverAPI(object):
     def __init__(self, username, password):
         params = {"username": username, "password": password}
         r = requests.post("https://www.hover.com/api/login", params=params)
+        logging.debug(r)
         if not r.ok or "hoverauth" not in r.cookies:
             raise HoverException(r)
         self.cookies = {"hoverauth": r.cookies["hoverauth"]}
@@ -35,7 +52,8 @@ class HoverAPI(object):
 
 
 def get_public_ip():
-    return requests.get("http://ifconfig.me/ip").content
+    #return requests.get("http://ifconfig.me/ip").content
+    return requests.get("http://icanhazip.com").content
 
 
 def update_dns(username, password, fqdn, ip):
@@ -44,12 +62,17 @@ def update_dns(username, password, fqdn, ip):
     except HoverException as e:
         raise HoverException("Authentication failed")
     dns = client.call("get", "dns")
+
     dns_id = None
     for domain in dns["domains"]:
         if fqdn == domain["domain_name"]:
             fqdn = "@.{domain_name}".format(**domain)
         for entry in domain["entries"]:
-            if entry["type"] != "A": continue
+            logging.info(entry)
+            if entry["type"].upper() != "A": continue
+            logging.info(entry["name"])
+            logging.info(domain["domain_name"])
+            logging.info(fqdn)
             if "{0}.{1}".format(entry["name"], domain["domain_name"]) == fqdn:
                 dns_id = entry["id"]
                 break
@@ -69,14 +92,18 @@ def main(args):
         username, password = args["--username"], args["--password"]
     else:
         config = ConfigParser.ConfigParser()
-        config.read(args["--conf"])
+        config.read(args["--config"])
         items = dict(config.items("hover"))
         username, password = items["username"], items["password"]
 
     domain = args["<domain>"]
-    ip = args.get("--ip", get_public_ip())
+    ip = args.get("--ip")
+    if not ip:
+    	ip = get_public_ip()
+    logging.info(ip)
 
     try:
+        logging.info(username, password, domain, ip)
         update_dns(username, password, domain, ip)
     except HoverException as e:
         print "Unable to update DNS: {0}".format(e)
@@ -86,7 +113,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    version = __doc__.strip().split("\n")[0]
-    args = docopt.docopt(__doc__, version=version)
+    args = docopt.docopt(__doc__, version=VERSION)
+    thelevel = logging.ERROR
+    if args["--debug"]:
+        thelevel = logging.INFO
+    logging.basicConfig(level=thelevel)
+    logging.info(args)
     status = main(args)
     sys.exit(status)
