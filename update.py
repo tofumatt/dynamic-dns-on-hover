@@ -5,8 +5,8 @@ Dynamic DNS for Hover
 Most code from https://gist.github.com/dankrause/5585907
 
 usage:
-    update.py --username=USERNAME --password=PASSWORD <domain> [--ip=IP]
-    update.py --config=CONFIG <domain> [--ip=IP]
+    update.py --username=USERNAME --password=PASSWORD <domain> [--ip=IP] [--debug]
+    update.py --config=CONFIG <domain> [--ip=IP] [--debug]
 
 options:
 
@@ -16,6 +16,8 @@ options:
     --ip=IP              IP to set, if empty get external IP from ifconfig.me
 
     --config=CONFIG      Read usernameand password from a INI like file
+
+    --debug
 """
 
 import ConfigParser
@@ -50,7 +52,8 @@ class HoverAPI(object):
 
 
 def get_public_ip():
-    return requests.get("http://ifconfig.me/ip").content
+    #return requests.get("http://ifconfig.me/ip").content
+    return requests.get("http://icanhazip.com").content
 
 
 def update_dns(username, password, fqdn, ip):
@@ -94,7 +97,10 @@ def main(args):
         username, password = items["username"], items["password"]
 
     domain = args["<domain>"]
-    ip = args.get("--ip", get_public_ip())
+    ip = args.get("--ip")
+    if not ip:
+    	ip = get_public_ip()
+    logging.info(ip)
 
     try:
         logging.info(username, password, domain, ip)
@@ -107,8 +113,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.ERROR)
     args = docopt.docopt(__doc__, version=VERSION)
-    logging.debug(args)
+    thelevel = logging.ERROR
+    if args["--debug"]:
+        thelevel = logging.INFO
+    logging.basicConfig(level=thelevel)
+    logging.info(args)
     status = main(args)
     sys.exit(status)
